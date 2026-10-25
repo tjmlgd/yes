@@ -3,7 +3,7 @@
   pyrite, as a single self-contained .svg file.
 
   The app is HTML, so it lives inside a <foreignObject>. Everything below the
-  <body> line is the original document, with five mechanical changes:
+  <body> line is the original document, with these mechanical changes:
 
    1. XML rules: void tags are self-closed, boolean attributes carry values
       (hidden="hidden"), "&" is escaped in the font URL and inside CSS comments,
@@ -23,6 +23,8 @@
    5. Nodes built in JS (the cards and the game iframe) are created in the XHTML
       namespace: in an SVG document document.createElement() returns elements in
       no namespace, which are not links and have no browsing context.
+   6. The cover page also steps aside on its own after a few seconds, and takes a
+      pointer-down or any key as well as a click, so nobody gets stuck on it.
 
   <noscript> is gone: in XML it is parsed as an element, so its <style> would
   have applied on top of the scripted behaviour.
@@ -853,6 +855,32 @@ svg:not(.gated) .gate { display: none; } /* e.g. pyrite embedded in the about:bl
   .gate-foot .gate-wrap { grid-template-columns: 1fr; }
   .gate-foot-links { grid-template-columns: 1fr 1fr; }
 }
+
+/* nudge + fade: the cover page steps aside on its own, so nobody gets stuck on it */
+.gate-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 3;
+  transform: translateX(-50%);
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: #005ea2;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+  pointer-events: none;
+}
+.gate-hint b { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.gate { transition: opacity .32s ease; }
+.gate.gate-out { opacity: 0; pointer-events: none; }
+
+@media (max-width: 620px) {
+  .gate-hint { bottom: 64px; font-size: 13px; padding: 9px 14px; }
+}
       </style>
       <style>
 /* --- svg host -------------------------------------------------------------- */
@@ -1006,6 +1034,7 @@ svg.playing .scroll { overflow: hidden; }
     </footer>
 
     <div class="gate-help">Help improve ED.gov</div>
+    <div class="gate-hint">Click anywhere to continue · opening in <b id="gate-left">6</b>s</div>
   </div>
 
   <div class="stage" aria-hidden="true"></div>
@@ -1518,16 +1547,40 @@ var GAMES=[{"id":"html/0-fa","name":"Debut Sonic In Giovanni","img":"icon.png"},
 
   /* ---------- cover page ---------- */
 
-  // Every visit starts on the cover page (see index.html). Clicking anywhere on it opens pyrite.
+  // Every visit starts on the cover page (see index.html). A click, a tap, any key — or just
+  // waiting a few seconds — lets it through, so nobody gets stuck staring at it.
   const gate = $("gate");
+  let gateOpen = false;
+  let gateTimer = 0;
+  let gateTick = 0;
+
+  function openGate() {
+    if (gateOpen || !gate) return;
+    gateOpen = true;
+    clearTimeout(gateTimer);
+    clearInterval(gateTick);
+    root.classList.remove("gated");   // the app is revealed straight away...
+    gate.classList.add("gate-out");   // ...and the cover page fades off on top of it
+    setTimeout(() => gate.remove(), 320);
+    fill();
+    route(); // a shared link like /#/html/0-fa opens now, not behind the cover
+  }
+
   if (gate && !gated()) gate.remove(); // embedded: no cover page
   if (gate && gated()) {
-    gate.addEventListener("click", () => {
-      root.classList.remove("gated");
-      gate.remove();
-      fill();
-      route(); // a shared link like /#/html/0-fa opens now, not behind the cover
-    }, { once: true });
+    const AUTO = 6; // seconds before the cover page steps aside on its own
+    const left = $("gate-left");
+
+    // pointerdown as well as click, so a tap that turns into a drag still counts
+    gate.addEventListener("pointerdown", openGate, { once: true });
+    gate.addEventListener("click", openGate, { once: true });
+    addEventListener("keydown", openGate, { once: true });
+
+    gateTimer = setTimeout(openGate, AUTO * 1000);
+    if (left) {
+      let s = AUTO;
+      gateTick = setInterval(() => { if (s > 1) left.textContent = String(--s); }, 1000);
+    }
   }
 
   /* ---------- shield: open pyrite inside an about:blank tab ---------- */
